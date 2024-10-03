@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "msoc"
+version = "0.0.6"
+description = "Быстрый поисковик музыки"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+  "bs4",
+  "aiohttp"
+]
+
+[project.urls]
+GitHub = "https://github.com/paranoik1/msoc"
+
+[project.scripts]
+msoc = "msoc.__main__:execute"
