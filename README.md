@@ -42,13 +42,25 @@ async def main():
     query = input("Запрос: ")
 
     async for sound in search(query):
-        print(f"Name: {sound.name}, URL: {sound.url}")
+        print(f"Name: {sound.title}\nArtist: {sound.artist}\nURL: {sound.url}")
+        print("================================================")
 
 
 asyncio.run(main())
 ```
 
 Функция `search()` принимает поисковый запрос в качестве аргумента и возвращает асинхронный генератор, который генерирует объекты `Sound` с информацией о найденных треках.
+
+## Класс Sound
+
+Класс `Sound` содержит информацию о песне.
+
+Атрибуты:
+
+- `title (str)`: Название песни.
+- `url (str | None)`: Ссылка на скачивание песни. Может быть None, если ссылка недоступна (Необязательный атрибут).
+- `artist (str | None)`: Исполнитель песни. Может быть None, если информация об исполнителе недоступна (Необязательный атрибут).
+
 
 ## Реализованные движки поиска
 
@@ -94,9 +106,10 @@ async def search(query: str):
     soup = BeautifulSoup(html, "html.parser")
 
     for item in soup.find_all("div", class_="search-result"):
-        name = item.find("h3").text.strip()
-        url = item.find("a")["href"]
-        yield Sound(name, url)
+        name = item.find("h3").get_text(strip=True)
+        artist = item.find("span", class_="artist").get_text(strip=True)
+        url = item.find("a").get("href")
+        yield Sound(name, url, artist)
 ```
 
 3. Подключите ваш поисковый движок к системе:

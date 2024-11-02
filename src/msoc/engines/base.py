@@ -7,20 +7,15 @@ from msoc.sound import Sound
 def get_name(track: Tag):
     track_title = track.get("data-title")
 
-    if track_title:
-        return track_title
+    return track_title or track.find("div", _class="track-title").text
 
-    span = track.find("div", _class="track-title")
-    return span.text
-    
 
 def get_url(track: Tag):
-    data_track = track.get("data-track")
+    return track.get("data-track")
 
-    if data_track:
-        return data_track
 
-    return ""
+def get_artist(track: Tag):
+    return track.get("data-artist")
 
 
 async def search(url: str, query: str, **kwargs):
@@ -34,5 +29,6 @@ async def search(url: str, query: str, **kwargs):
     for track in html.find_all("div", {"class": "track-item"}):
         name = get_name(track)
         download_url = get_url(track)
+        artist = get_artist(track)
 
-        yield Sound(name, download_url)
+        yield Sound(name, download_url, artist)

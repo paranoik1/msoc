@@ -1,4 +1,5 @@
 from types import ModuleType
+from typing import AsyncGenerator
 
 from .functions import create_generator_task
 from .sound import Sound
@@ -50,7 +51,7 @@ def unload_search_engine(name: str) -> None:
         raise LoadedEngineNotFoundError(name)
 
 
-async def search(query: str):
+async def search(query: str) -> AsyncGenerator[None, Sound]:
     """
     Функция начинает поиск песен по запросу query.
 
@@ -60,7 +61,7 @@ async def search(query: str):
     tasks = [
         create_generator_task(engine.search(query)) 
         for engine in ENGINES.values()
-        ]
+    ]
 
     for task in tasks:
         async for sound in task:

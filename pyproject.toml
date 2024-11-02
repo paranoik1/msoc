@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "msoc"
-version = "0.0.7"
+version = "0.0.8"
 description = "Быстрый поисковик музыки"
 readme = "README.md"
 requires-python = ">=3.8"

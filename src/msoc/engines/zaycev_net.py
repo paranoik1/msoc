@@ -64,9 +64,14 @@ async def get_streaming_url(session: ClientSession, streaming_hash: str) -> str:
 
 
 def get_name(li: bs4.Tag) -> str:   
-   span = li.select_one("div:nth-child(1) > div:nth-child(1) > article:nth-child(2) > a:nth-child(1) > span:nth-child(1)")
+    span = li.select_one("div:nth-child(1) > div:nth-child(1) > article:nth-child(2) > a:nth-child(1) > span:nth-child(1)")
+    return span.get_text(strip=True)
 
-   return span.text
+
+def get_artist(li: bs4.Tag) -> str:
+    span = li.select_one("div:nth-child(1) > div:nth-child(1) > article:nth-child(2) > a:nth-child(2) > span")
+    return span.get_text(strip=True)
+
 
 
 async def search(query: str):
@@ -79,18 +84,22 @@ async def search(query: str):
         if not ul:
             return 
         
-        track_names = dict()
+        tracks_info = dict()
         for li in ul.find_all("li"):
             name = get_name(li)
+            artist = get_artist(li)
             track_id = get_id(li)
 
-            track_names[track_id] = name
+            tracks_info[track_id] = (name, artist)
 
-        async for track_id, download_hash, streaming_hash in get_tracks_download_hashes(session, list(track_names.keys())):
-            name = track_names[str(track_id)]
+        async for track_id, download_hash, streaming_hash in get_tracks_download_hashes(session, list(tracks_info.keys())):
+            track_info = tracks_info[str(track_id)]
+            name = track_info[0]
+            artist = track_info[1]
+
             if download_hash:
                 url = await get_url(session, download_hash)
             else:
                 url = await get_streaming_url(session, streaming_hash)
 
-            yield Sound(name, url)
+            yield Sound(name, url, artist)
