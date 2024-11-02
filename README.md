@@ -11,7 +11,7 @@ pip install msoc
 
 Так же можно установить из исходников:
 ```bash
-git clone https://codeberg.org/Ktoto/MSOC.git
+git clone https://github.com/paranoik1/msoc.git
 
 cd MSOC
 
