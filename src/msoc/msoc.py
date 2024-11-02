@@ -2,7 +2,7 @@ from types import ModuleType
 
 from .functions import create_generator_task
 from .sound import Sound
-from .engines import mp3uk, zaycev_net
+from .engines import mp3uk, zaycev_net, trekson
 
 from .exceptions import LoadedEngineNotFoundError
 
@@ -18,7 +18,8 @@ __all__ = [
 
 ENGINES = {
     "mp3uk": mp3uk,
-    "zaycev_net": zaycev_net
+    "zaycev_net": zaycev_net,
+    "trekson": trekson
 }
 
 
