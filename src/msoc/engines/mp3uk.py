@@ -41,10 +41,14 @@ HEADERS = {
 
 async def search(query: str):
     async for sound in base_search(
-        url=URL, 
+        url=URL,
         query=query,
         headers=HEADERS,
-        cookies=COOKIES 
+        cookies=COOKIES
     ):
-        sound.url = "https:" + sound.url
+        if "/dl.php?" in sound.url:
+            sound.url = "https://mp3uk.net" + sound.url
+        else:
+            sound.url = "https:" + sound.url
+
         yield sound
