@@ -3,7 +3,7 @@ from typing import AsyncGenerator
 
 from .functions import create_generator_task
 from .sound import Sound
-from .engines import mp3uk, zaycev_net, trekson
+from .engines import mp3uk, zaycev_net, trekson, hitmo
 
 from .exceptions import LoadedEngineNotFoundError
 
@@ -20,7 +20,8 @@ __all__ = [
 ENGINES = {
     "mp3uk": mp3uk,
     "zaycev_net": zaycev_net,
-    "trekson": trekson
+    "trekson": trekson,
+    "hitmo": hitmo
 }
 
 

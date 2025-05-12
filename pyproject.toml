@@ -15,7 +15,8 @@ classifiers = [
 ]
 dependencies = [
   "bs4",
-  "aiohttp"
+  "aiohttp",
+  "lxml"
 ]
 
 [project.urls]

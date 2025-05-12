@@ -46,7 +46,7 @@ async def search(query: str):
         headers=HEADERS,
         cookies=COOKIES
     ):
-        if "/dl.php?" in sound.url:
+        if "/dl.php?" in sound.url or "/api/" in sound.url:
             sound.url = "https://mp3uk.net" + sound.url
         else:
             sound.url = "https:" + sound.url

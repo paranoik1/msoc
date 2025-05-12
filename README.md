@@ -69,6 +69,7 @@ asyncio.run(main())
 - mp3uk: Поиск на сайте [mp3uks.ru](https://mp3uks.ru)
 - zaycev_net: Поиск на сайте [zaycev.net](https://zaycev.net)
 - trekson: Поиск на сайте [trekson.net](https://trekson.net/)
+- hitmo: Поиск на сайт [rus.hitmotop.com](https://rus.hitmotop.com) - реализован на основе [данного кода](https://github.com/Ushiiro82/MelodyHub/blob/master/parsing/hitmo_parser.py)
 
 Вы можете добавлять новые движки поиска, создавая модули и загружая их с помощью функций `load_search_engine()` и `unload_search_engine()`.
 
