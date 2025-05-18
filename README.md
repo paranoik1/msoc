@@ -2,7 +2,7 @@
 
 # 🎵 MSOC - Библиотека для быстрого и асинхронного поиска музыки
 
-[![Python](https://img.shields.io/badge/Python-3.8+-blue?style=for-the-badge&logo=python)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/Python-3.12+-blue?style=for-the-badge&logo=python)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/msoc?style=for-the-badge)](https://pypi.org/project/msoc/)
 [![Downloads](https://img.shields.io/pypi/dm/msoc?style=for-the-badge)](https://pypi.org/project/msoc/)
