@@ -5,7 +5,7 @@ from typing import AsyncGenerator
 
 async def consume(a_iter):
     try:
-        return await a_iter.__anext__(),  asyncio.create_task(consume(a_iter))
+        return await a_iter.__anext__(), asyncio.create_task(consume(a_iter))
     except StopAsyncIteration:
         return None, None
     except Exception:

@@ -1,7 +1,7 @@
 import aiohttp
 from bs4 import BeautifulSoup, Tag
 
-from msoc.sound import Sound
+from ..sound import Sound
 
 
 def get_name(track: Tag):
@@ -25,7 +25,7 @@ async def search(url: str, query: str, **kwargs):
             text = await response.text()
 
     html = BeautifulSoup(text, "lxml")
-    
+
     for track in html.find_all("div", {"class": "track-item"}):
         name = get_name(track)
         download_url = get_url(track)

@@ -1,28 +1,15 @@
 from types import ModuleType
 from typing import AsyncGenerator
 
+from .engines import hitmo, mp3uk, trekson, zaycev_net
+from .exceptions import LoadedEngineNotFoundError
 from .functions import create_generator_task
 from .sound import Sound
-from .engines import mp3uk, zaycev_net, trekson, hitmo
 
-from .exceptions import LoadedEngineNotFoundError
-
-
-__all__ = [
-    "search",
-    "engines",
-    "load_search_engine",
-    "unload_search_engine",
-    "Sound"
-]
+__all__ = ["search", "engines", "load_search_engine", "unload_search_engine", "Sound"]
 
 
-ENGINES = {
-    "mp3uk": mp3uk,
-    "zaycev_net": zaycev_net,
-    "trekson": trekson,
-    "hitmo": hitmo
-}
+ENGINES = {"mp3uk": mp3uk, "trekson": trekson, "hitmo": hitmo, "zaycev_net": zaycev_net}
 
 
 def engines() -> dict[str, ModuleType]:
@@ -59,10 +46,7 @@ async def search(query: str) -> AsyncGenerator[None, Sound]:
     Возвращает: асинхронный генератор Sound
     """
 
-    tasks = [
-        create_generator_task(engine.search(query)) 
-        for engine in ENGINES.values()
-    ]
+    tasks = [create_generator_task(engine.search(query)) for engine in ENGINES.values()]
 
     for task in tasks:
         async for sound in task:

@@ -1,6 +1,7 @@
-from .msoc import search
-from sys import argv
 import asyncio
+from sys import argv
+
+from .msoc import search
 
 
 async def main(query):
@@ -14,6 +15,5 @@ def execute():
     asyncio.run(main(query))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     execute()
-
