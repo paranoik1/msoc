@@ -88,10 +88,11 @@ asyncio.run(main())
 
 В настоящее время библиотека MSOC поддерживает следующие движки поиска:
 
-- mp3uk: Поиск на сайте [mp3uks.ru](https://mp3uks.ru)
+- mp3feel: Поиск на сайте [mp3uks.ru](https://mp3feel.net/)
 - zaycev_net: Поиск на сайте [zaycev.net](https://zaycev.net)
 - trekson: Поиск на сайте [trekson.net](https://trekson.net/)
-- hitmo: Поиск на сайт [rus.hitmotop.com](https://rus.hitmotop.com) - реализован на основе [данного кода](https://github.com/Ushiiro82/MelodyHub/blob/master/parsing/hitmo_parser.py)
+- hitmo: Поиск на сайте [rus.hitmotop.com](https://rus.hitmotop.com) - реализован на основе [данного кода](https://github.com/Ushiiro82/MelodyHub/blob/master/parsing/hitmo_parser.py)
+- muzbomb: Поиск на сайте [muzbomb.net](https://muzbomb.net/) - создан [takilow](https://github.com/takilow)
 
 Вы можете добавлять новые движки поиска, создавая модули и загружая их с помощью функций `load_search_engine()` и `unload_search_engine()`.
 

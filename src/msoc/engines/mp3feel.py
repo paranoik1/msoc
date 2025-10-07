@@ -1,6 +1,7 @@
 from urllib.parse import quote
 
 from aiohttp import ClientSession
+from aiohttp.client_exceptions import ClientConnectorError
 from bs4 import BeautifulSoup
 
 from ..sound import Sound
@@ -65,9 +66,13 @@ async def search(query: str):
     encoded_query = quote(query)
     search_url = f"{URL}?q={encoded_query}"
 
-    async with ClientSession(headers=HEADERS) as session:
-        response = await session.get(search_url)
-        content = await response.text()
+    try:
+        async with ClientSession(headers=HEADERS) as session:
+            response = await session.get(search_url)
+            content = await response.text()
+    except ClientConnectorError:
+        print("Сервис mp3feel не доступен в вашем регионе")
+        return 
 
     soup = BeautifulSoup(content, "lxml")
     all_songs = soup.select(".track-item")

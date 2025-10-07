@@ -1,7 +1,7 @@
 from types import ModuleType
 from typing import AsyncGenerator
 
-from .engines import hitmo, mp3uk, trekson, zaycev_net
+from .engines import hitmo, mp3feel, trekson, zaycev_net, muzbomb
 from .exceptions import LoadedEngineNotFoundError
 from .functions import create_generator_task
 from .sound import Sound
@@ -9,7 +9,7 @@ from .sound import Sound
 __all__ = ["search", "engines", "load_search_engine", "unload_search_engine", "Sound"]
 
 
-ENGINES = {"mp3uk": mp3uk, "trekson": trekson, "hitmo": hitmo, "zaycev_net": zaycev_net}
+ENGINES = {"mp3uk": mp3feel, "trekson": trekson, "hitmo": hitmo, "zaycev_net": zaycev_net, "muzbomb": muzbomb}
 
 
 def engines() -> dict[str, ModuleType]:

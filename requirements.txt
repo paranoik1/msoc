@@ -1,2 +1,13 @@
-bs4==0.0.2
 aiohttp==3.9.5
+aiosignal==1.4.0
+attrs==25.3.0
+beautifulsoup4==4.14.2
+bs4==0.0.2
+frozenlist==1.7.0
+idna==3.10
+lxml==6.0.2
+multidict==6.6.4
+propcache==0.3.2
+soupsieve==2.8
+typing_extensions==4.15.0
+yarl==1.20.1
