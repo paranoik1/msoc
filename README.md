@@ -92,13 +92,12 @@ asyncio.run(main())
 
 В настоящее время библиотека MSOC поддерживает следующие движки поиска:
 
-- mp3uk: Поиск на сайте [mp3feel.net](https://mp3feel.net/)
 - zaycev_net: Поиск на сайте [zaycev.net](https://zaycev.net)
-- trekson: Поиск на сайте [trekson.net](https://trekson.net/) ⚠️ (требует обновления, сайт изменён)
 - hitmo: Поиск на сайте [rus.hitmotop.com](https://rus.hitmotop.com) - реализован на основе [данного кода](https://github.com/Ushiiro82/MelodyHub/blob/master/parsing/hitmo_parser.py)
 - muzbomb: Поиск на сайте [muzbomb.net](https://muzbomb.net/) - создан [takilow](https://github.com/takilow)
+- trekson: ~~Поиск на сайте [trekson.net](https://trekson.net/)~~ ⚠️ отключён — сайт обновлён, требуется обновление парсера
 
-Вы можете добавлять новые движки поиска, создавая модули и загружая их с помощью функций `load_search_engine()` и `unload_search_engine()`.
+Движки загружаются автоматически при импорте пакета `msoc`.
 
 ## ❌ Exceptions
 
@@ -143,16 +142,16 @@ async def search(query: str):
 3. Подключите ваш поисковый движок к системе:
 
 ```python
-from msoc import load_search_engine, engines
+from msoc import register_engine, get_engines
 
 import my_search_engine
 
 
-load_search_engine("my_search_engine", my_search_engine)
-print(engines())
+register_engine("my_search_engine", my_search_engine)
+print(get_engines())
 ```
    - Замените `my_search_engine` на название вашего python файла.
-   - Далее вызываем `engines()`, чтобы удостовериться, что движок был успешно загружен
+   - Далее вызываем `get_engines()`, чтобы удостовериться, что движок был успешно загружен
 
 4. Теперь при запуске основной `search` функции, ваш движок будет автоматически загружен и использован для поиска песен
 
@@ -160,7 +159,7 @@ print(engines())
 Если вам нужно подключить поисковой движок, файл которого находится не в текущей папке проекта, можете воспользоваться встроенным python пакетом `importlib`
 
 ```python
-from msoc import load_search_engine
+from msoc import register_engine
 from importlib import util
 
 spec = util.spec_from_file_location("my_search_engine", "/path/to/python/file/my_search_engine.py")
@@ -169,7 +168,7 @@ module = util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
-load_search_engine("my_search_engine", module)
+register_engine("my_search_engine", module)
 ```
 
 ### ℹ️ P.S 2
