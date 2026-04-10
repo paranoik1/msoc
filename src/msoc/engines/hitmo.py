@@ -7,6 +7,7 @@ from aiohttp import ClientSession
 from bs4 import BeautifulSoup
 
 from ..sound import Sound
+from .base import validate_and_return_absolute_url
 
 # Headers
 HEADERS = {
@@ -34,7 +35,11 @@ def get_song_artist(track_info):
 def get_download_song_url(track_info):
     tag_a = track_info.find("a", class_="track__download-btn")
     link = tag_a["href"]
-    return link.strip() if link else None
+    if not link:
+        return None
+    
+    url = validate_and_return_absolute_url(link.strip(), BASE_URL)
+    return url
 
 
 async def search(query: str):

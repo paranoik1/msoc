@@ -1,10 +1,13 @@
 from urllib.parse import quote
-
+import logging
 from aiohttp import ClientSession
 from aiohttp.client_exceptions import ClientConnectorError
 from bs4 import BeautifulSoup
 
 from ..sound import Sound
+
+
+logger = logging.getLogger(__name__)
 
 URL = "https://mp3feel.net/search"
 
@@ -71,7 +74,7 @@ async def search(query: str):
             response = await session.get(search_url)
             content = await response.text()
     except ClientConnectorError:
-        print("Сервис mp3feel не доступен в вашем регионе")
+        logger.critical("Сервис mp3feel не доступен в вашем регионе")
         return 
 
     soup = BeautifulSoup(content, "lxml")

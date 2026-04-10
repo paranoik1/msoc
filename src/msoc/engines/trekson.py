@@ -35,6 +35,7 @@ HEADERS = {
 }
 
 
+# FIXME: не работает, сайт обновили
 async def search(query: str):
     async for sound in base_search(
         url=URL, query=query, headers=HEADERS, cookies=COOKIES

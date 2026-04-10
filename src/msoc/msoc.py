@@ -72,6 +72,7 @@ async def search(query: str) -> AsyncGenerator[Sound, None]:
 
         try:
             async for sound in search_callback(query):
+                sound._engine = engine_name
                 await queue.put(sound)
         except Exception:
             logger.critical(

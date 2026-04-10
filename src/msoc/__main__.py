@@ -6,7 +6,7 @@ from .msoc import search
 
 async def main(query):
     async for sound in search(query):
-        print(f"Name: {sound.title}\nArtist: {sound.artist}\nURL: {sound.url}")
+        print(f"Name: {sound.title}\nArtist: {sound.artist}\nURL: {sound.url}\nEngine: {sound._engine}\nMeta: {sound.meta}")
         print("================================================")
 
 

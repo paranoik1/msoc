@@ -48,8 +48,10 @@ pip install .
 ```shell
 msoc <query or empty>
 # or
-python -m msoc <query or empy>
+python -m msoc <query or empty>
 ```
+
+При запуске будет выведена информация о найденных треках: `Name`, `Artist`, `URL`, `Engine` (название движка) и `Meta` (дополнительные метаданные).
 
 ## ⌨️ В коде
 
@@ -82,15 +84,17 @@ asyncio.run(main())
 - `title (str)`: Название песни.
 - `url (str | None)`: Ссылка на скачивание песни. Может быть None, если ссылка недоступна (Необязательный атрибут).
 - `artist (str | None)`: Исполнитель песни. Может быть None, если информация об исполнителе недоступна (Необязательный атрибут).
+- `meta (dict[str, Any])`: Дополнительные метаданные трека.
+- `_engine (str | None)`: Название движка, нашедшего трек (заполняется автоматически).
 
 
 ## 🔌 Реализованные движки поиска
 
 В настоящее время библиотека MSOC поддерживает следующие движки поиска:
 
-- mp3feel: Поиск на сайте [mp3uks.ru](https://mp3feel.net/)
+- mp3uk: Поиск на сайте [mp3feel.net](https://mp3feel.net/)
 - zaycev_net: Поиск на сайте [zaycev.net](https://zaycev.net)
-- trekson: Поиск на сайте [trekson.net](https://trekson.net/)
+- trekson: Поиск на сайте [trekson.net](https://trekson.net/) ⚠️ (требует обновления, сайт изменён)
 - hitmo: Поиск на сайте [rus.hitmotop.com](https://rus.hitmotop.com) - реализован на основе [данного кода](https://github.com/Ushiiro82/MelodyHub/blob/master/parsing/hitmo_parser.py)
 - muzbomb: Поиск на сайте [muzbomb.net](https://muzbomb.net/) - создан [takilow](https://github.com/takilow)
 
