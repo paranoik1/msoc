@@ -9,3 +9,5 @@ dist/
 dist.sh
 test.py
 .idea
+.venv
+.mypy_cache
