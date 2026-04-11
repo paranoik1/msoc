@@ -44,9 +44,12 @@ def get_id(li: Tag) -> str | None:
     return track_id
 
 
+TrackInfo = tuple[int, str | None, str | None]
+
+
 async def get_tracks_download_hashes(
     session: ClientSession, track_ids: list[str]
-) -> AsyncGenerator[tuple[int, Any, Any], None]:
+) -> AsyncGenerator[TrackInfo, None]:
     data = DATA_TEMPLATE_TRACKS_META.copy()
     data["trackIds"] = track_ids
 
@@ -72,9 +75,13 @@ async def get_tracks_download_hashes(
         return
 
     for track_meta in json_data["tracks"]:
-        track_id: int = track_meta["id"]
-        download_hash: Any = track_meta.get("download")
-        streaming_hash: Any = track_meta.get("streaming")
+        track_id: int | None = track_meta.get("id")
+        if track_id is None:
+            logger.warn('zaycev_net: не был получен track_id с объекта, пропускаем')
+            continue
+
+        download_hash: str | None = track_meta.get("download")
+        streaming_hash: str | None = track_meta.get("streaming")
 
         yield track_id, download_hash, streaming_hash
 
@@ -142,59 +149,61 @@ async def search(query: str) -> AsyncGenerator[Sound, None]:
         Sound — информация о найденном треке.
     """
     logger.info("zaycev_net: поиск по запросу '%s'", query)
-
+    session = ClientSession()
     try:
-        async with ClientSession() as session:
-            async with session.get(SEARCH_URL + query) as response:
-                if response.status != 200:
-                    logger.warning(
-                        "zaycev_net: HTTP %d при поисковом запросе", response.status
-                    )
-                    return
-                html_text = await response.text()
+        async with session.get(SEARCH_URL + query) as response:
+            if response.status != 200:
+                logger.warning(
+                    "zaycev_net: HTTP %d при поисковом запросе", response.status
+                )
+                return
+            html_text = await response.text()
+
+        html = BeautifulSoup(html_text, "html.parser")
+        ul = html.find("ul", attrs={"class": "xm4ofx-1 itNyE"})
+        if ul is None or not isinstance(ul, Tag):
+            logger.debug("zaycev_net: не найдена таблица с результатами поиска")
+            return
+
+        tracks_info: dict[str, tuple[str, str]] = {}
+        for li in ul.find_all("li"):
+            track_id = get_id(li)
+            if track_id is None:
+                continue
+
+            name = get_name(li)
+            artist = get_artist(li)
+
+            tracks_info[track_id] = (name, artist)
+
+        logger.info("zaycev_net: найдено треков в HTML: %d", len(tracks_info))
+
+        async for tid, download_hash, streaming_hash in get_tracks_download_hashes(
+            session, list(tracks_info.keys())
+        ):
+            track_info = tracks_info.get(str(tid))
+            if track_info is None:
+                continue
+
+            name, artist = track_info
+
+            url: str | None = None
+            if download_hash:
+                url = await get_url(session, download_hash)
+            elif streaming_hash:
+                url = await get_streaming_url(session, streaming_hash)
+
+            if url:
+                logger.debug("zaycev_net: трек '%s' — %s", artist, name)
+            else:
+                logger.warning(
+                    "zaycev_net: не удалось получить URL для '%s' — %s", artist, name
+                )
+
+            yield Sound(name, url, artist)
     except ClientError as exc:
         logger.error("zaycev_net: ошибка HTTP-запроса поиска: %s", exc)
         return
+    finally:
+        await session.close()
 
-    html = BeautifulSoup(html_text, "html.parser")
-    ul = html.find("ul", attrs={"class": "xm4ofx-1 itNyE"})
-    if ul is None or not isinstance(ul, Tag):
-        logger.debug("zaycev_net: не найдена таблица с результатами поиска")
-        return
-
-    tracks_info: dict[str, tuple[str, str]] = {}
-    for li in ul.find_all("li"):
-        track_id = get_id(li)
-        if track_id is None:
-            continue
-
-        name = get_name(li)
-        artist = get_artist(li)
-
-        tracks_info[track_id] = (name, artist)
-
-    logger.info("zaycev_net: найдено треков в HTML: %d", len(tracks_info))
-
-    async for tid, download_hash, streaming_hash in get_tracks_download_hashes(
-        session, list(tracks_info.keys())
-    ):
-        track_info = tracks_info.get(str(tid))
-        if track_info is None:
-            continue
-
-        name, artist = track_info
-
-        url: str | None = None
-        if download_hash:
-            url = await get_url(session, download_hash)
-        elif streaming_hash:
-            url = await get_streaming_url(session, streaming_hash)
-
-        if url:
-            logger.debug("zaycev_net: трек '%s' — %s", artist, name)
-        else:
-            logger.warning(
-                "zaycev_net: не удалось получить URL для '%s' — %s", artist, name
-            )
-
-        yield Sound(name, url, artist)
