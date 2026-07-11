@@ -1,107 +1,61 @@
 from functools import cache
-import json
-import subprocess
-import asyncio
-import logging
-import threading
 import queue
-import sounddevice as sd# type: ignore
-from msoc import Sound, search
+import subprocess
+import threading
+import sys
+import logging
 
+import sounddevice as sd # type: ignore
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Input, Button, Label
-from textual.containers import VerticalScroll, HorizontalGroup, VerticalGroup
+from textual.containers import VerticalScroll, VerticalGroup
+
+from msoc import Sound, search 
 
 
 logger = logging.getLogger()
 
 
-class SoundWidget(HorizontalGroup):
-    def __init__(self, player: "AudioPlayer", sound: Sound, **widget_kwargs):
-        self.sound = sound
-        self.player = player
-        
-        super().__init__(**widget_kwargs)
-
-    def on_button_pressed(self, event: Button.Pressed):
-        if event.control.id != 'toggle-play':
-            return
-        
-        self.player.toggle_play(self)
-
-    def change_icon_button_play(self, icon: str):
-        self.query_one('#toggle-play').label = icon  # type: ignore
-
-    def compose(self) -> ComposeResult:
-        yield Button('▶', id='toggle-play')
-        yield VerticalGroup(
-            Label(self.sound.title, variant='accent'),
-            Label(self.sound.artist or '')
-        )
-
-
-Duration = float
 Channels = int
-SampleRate = int
+SampleRate = float
+Duration = float
 
 
 class AudioPlayer:
-    BLOCKSIZE = 1024
-    BUFFERSIZE = 50
+    """
+    Изолированный аудио-движок. Работает в отдельном потоке, 
+    чтобы не блокировать asyncio цикл Textual.
+    """
+    BUFFER_SIZE = 20
+    BLOCK_SIZE = 1024
 
-    def __init__(self) -> None:
-        self.current_control: SoundWidget | None        = None
-        self._thread: threading.Thread | None           = None
+    def __init__(self, app: App):
+        self.app = app
+        self.buffer_queue = queue.Queue(maxsize=self.BUFFER_SIZE) # type: ignore
+        self.process: subprocess.Popen | None = None
+        self.stream: sd.RawOutputStream | None = None
+        self.thread: threading.Thread | None = None
+        self.current_widget: SoundWidget | None = None
 
-        # For Worker
-        self._ffmpeg_process: subprocess.Popen | None   = None
-        self._queue: queue.Queue                        = queue.Queue(maxsize=self.BUFFERSIZE)
-        self._stream: sd.RawOutputStream | None         = None
+        self._lock = threading.Lock()
 
-    def toggle_play(self, control: SoundWidget):
-        # Если у нас уже что то воспроизводиться то в любом случае останавливаем
-        if self.current_control:
-            self._stop()
-
-        # Если пользователь нажал на ту же кнопку, что и ранее, то просто выходим с функции
-        if control == self.current_control:
-            self.current_control = None
+        self.manage_task_queue = queue.Queue(maxsize=1) # type: ignore
+        self.is_playing = False
+        
+    def _callback(self, outdata, frames, time, status):
+        if status.output_underflow:
+            raise sd.CallbackAbort
+        
+        try:
+            data = self.buffer_queue.get_nowait()
+        except queue.Empty:
             return
         
-        # В ином случае начинаем воспроизводить другую песню
-        self.current_control = control
-        self.current_control.change_icon_button_play('..')
+        if len(data) != len(outdata):
+            raise sd.CallbackAbort
+            
+        outdata[:] = data
 
-        self._thread = threading.Thread(target=self._worker)
-        self._thread.start()
-
-    def _stop(self):
-        if not self.current_control:
-            logger.warning('Ничего не проигрывается (current_control пуст)')
-            return
-
-        self._thread.join()
-        if self._ffmpeg_process:
-            self._ffmpeg_process.kill()
-            self._queue.join()
-
-        self.current_control.change_icon_button_play('▶')
-
-    def _worker(self):
-        download_url = self.current_control.sound.url
-        song_info = self._get_ffprobe_info(download_url)
-        if not song_info:
-            logger.error('Мета данные о треке не были получены')
-            return
-        
-        self.current_control.change_icon_button_play('⏸')
-
-        self._ffmpeg_stream(download_url, song_info[0], song_info[1])
-
-        app = self.current_control.app
-        app.call_from_thread(lambda: self.current_control.change_icon_button_play('▶'))
-        self.current_control = None
-    
     @cache
     def device(self):
         try:
@@ -109,137 +63,231 @@ class AudioPlayer:
             return 'pipewire'
         except ValueError:
             return sd.default.device[1]
-        
+
     @staticmethod
-    def _get_ffprobe_info(url: str) -> tuple[SampleRate, Channels, Duration] | None:
-        ffprobe_cmd = [
-            "ffprobe", "-of", "json", "-show_streams", '-loglevel', 'quiet', url
+    def _get_ffprobe_info(url: str) -> tuple[Channels, SampleRate, Duration] | None:
+        probe_cmd = [
+            'ffprobe', '-v', 'error', '-show_entries', 'stream=channels,sample_rate,duration', '-of', 'default=noprint_wrappers=1:nokey=1', url
         ]
 
         try:
-            raw_song_info = subprocess.check_output(ffprobe_cmd, text=True)
+            probe_out = subprocess.check_output(probe_cmd, stderr=subprocess.PIPE).decode().splitlines()
         except subprocess.CalledProcessError:
-            logger.error('Не удалось получить информацию о треке с помощью ffprobe', exc_info=True)
+            logger.error('Произошла ошибка при получении метаданных трека с помощью ffprobe', exc_info=True)
             return None
         
-        try:
-            song_info = json.loads(raw_song_info)
-        except json.JSONDecodeError:
-            logger.error('Не удалось распарсить вывод ffprobe в json формат', exc_info=True)
-            return None
+        samplerate = float(probe_out[0])
+        channels = int(probe_out[1])
+        duration = float(probe_out[2])
 
-        streams = song_info.get('streams')
-        if len(streams) == 0:
-            logger.error(f'ffprobe выдал пустой ответ (без streams): {song_info}')
-            return None
-        
-        stream = streams[0]
+        return channels, samplerate, duration
 
-        if stream.get('codec_type') != 'audio':
-            logger.error(f'The stream must be an audio stream: {stream}')
-            return None
-
-        try:
-            sample_rate = int(stream.get('sample_rate'))
-            channels = int(stream.get('channels'))
-            duration = float(stream.get('duration'))
-        except:
-            logger.error(f'Произошла ошибка преобразования строк в числа, {sample_rate=}, {channels=}, {duration=}', exc_info=True)
-            return None
-
-        return sample_rate, channels, duration
-    
-    def _callback_sounddevice(self, outdata, frames, time, status):
-        if status.output_underflow:
-            raise sd.CallbackAbort
-        try:
-            data = self.q.get_nowait()
-        except queue.Empty:
-            raise sd.CallbackAbort
-        
-        if len(data) != len(outdata):
-            raise sd.CallbackAbort
-            
-        outdata[:] = data
-
-    def _ffmpeg_stream(self, url: str, sample_rate: SampleRate, channels: Channels):
+    def _stream_play_ffmpeg(self, url: str, channels: Channels, samplerate: SampleRate):
         ffmpeg_cmd = [
-            'ffmpeg', '-i', url, '-f', 'f32le', '-acodec', 'pcm_f32le', 
-            '-ac', str(channels), '-ar', str(sample_rate), '-loglevel', 'quiet', 'pipe:'
+            'ffmpeg', '-i', url,
+            '-f', 'f32le', '-acodec', 'pcm_f32le',
+            '-ac', str(channels), '-ar', str(samplerate),
+            '-v', 'quiet', 'pipe:'
         ]
 
-        # FIXME: Нужен ли Lock?
-        self._ffmpeg_process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
-        ffmpeg_stdout = self._ffmpeg_process.stdout
-
-        # NOTE: For mypy
-        if not ffmpeg_stdout:
-            logger.error('ffmpeg stdout is None')
+        self.process = subprocess.Popen(
+            ffmpeg_cmd, stdout=subprocess.PIPE
+        )
+        process_stdout = self.process.stdout
+        if not process_stdout:
+            logger.error('ffmpeg processs stdout is None...')
             return
-        
-        stream = sd.RawOutputStream(
-            samplerate=sample_rate, 
-            channels=channels, 
-            blocksize=self.BLOCKSIZE,
-            callback=self._callback_sounddevice, 
-            dtype='float32',
+
+        # Запускаем sounddevice
+        self.stream = sd.RawOutputStream(
+            samplerate=samplerate, blocksize=self.BLOCK_SIZE,
+            channels=channels, dtype='float32', callback=self._callback,
             device=self.device()
         )
+        read_size = self.BLOCK_SIZE * channels * self.stream.samplesize
 
-        read_size = self.BLOCKSIZE * channels * stream.samplesize
+        # Первичная буферизация
+        for _ in range(self.BUFFER_SIZE):
+            data = process_stdout.read(read_size)
+            if not data: break
+            self.buffer_queue.put_nowait(data)
 
-        for _ in range(self.BUFFERSIZE):
-            buffer_chunk = ffmpeg_stdout.read(read_size)
-            self._queue.put_nowait(buffer_chunk)
-
-        # timeout = self.BLOCKSIZE * self.BUFFERSIZE / sample_rate
-
-        with stream:
-            while True:
-                buffer_chunk = ffmpeg_stdout.read(read_size)
-                if not buffer_chunk:
-                    logger.info('ffmpeg stdout пуст')
+        # Основной цикл чтения
+        self.is_playing = True
+        with self.stream:
+            while self.is_playing:
+                data = process_stdout.read(read_size)
+                if not data:  # Поток закончился
                     break
+                # Кладем в очередь с таймаутом, чтобы проверять self.is_playing
+                try:
+                    self.buffer_queue.put(data, timeout=0.1)
+                except queue.Full:
+                    pass
 
-                self._queue.put(buffer_chunk)
+    def _worker(self, url: str):
+        """Метод, который крутится в фоновом потоке."""
+        try:
+            probe_info = self._get_ffprobe_info(url)
+            if not probe_info:
+                logger.error('Не удалось получить метаданные о треке...')
+                return
+            
+            channels, samplerate, duration = probe_info
+
+            if self.current_widget:
+                self.app.call_from_thread(
+                    self.current_widget.change_button_icon,
+                    '⏸'
+                )
+
+            self._stream_play_ffmpeg(url, channels, samplerate)
+        finally:
+            # Уведомляем Textual, что песня закончилась (безопасное обновление UI из потока)
+            if not self.manage_task_queue.empty():
+                self.manage_task_queue.get_nowait()
+                return
+
+            if self.current_widget:
+                self.app.call_from_thread(
+                    self.current_widget.change_button_icon, 
+                    '▶'
+                )
+
+            self.is_playing = False
+            self._cleanup()
+            self.current_widget = None
+
+    def _cleanup(self):
+        """
+        Отключаем проигрываение sounddevice, убиваем ffmpeg процесс и очищаем очередь (буффер)
+        """
+        self.is_playing = False
+        if self.stream:
+            try: 
+                self.stream.abort()
+                self.stream.close()
+            except: 
+                pass
+
+        if self.process:
+            self.process.kill()
+            self.process.wait()
+
+        # Очищаем очередь
+        while not self.buffer_queue.empty():
+            try: 
+                self.buffer_queue.get(timeout=0.01)
+            except: 
+                logger.error('Ошибка очистки буфера', exc_info=True)
+
+        self.stream = None
+        self.process = None
+
+    def play(self, url: str, widget: 'SoundWidget'):
+        """Запуск воспроизведения (вызывается из UI)."""
+        self.stop()  # Останавливаем предыдущее, если играло
+
+        self.current_widget = widget
+
+        self.thread = threading.Thread(target=self._worker, args=(url,), daemon=True)
+        self.thread.start()
+
+    def stop(self):
+        """Остановка воспроизведения"""
+        if self.thread and self.thread.is_alive():
+            if self.manage_task_queue.empty():
+                self.manage_task_queue.put('stop_ui')
+            self.thread.join(timeout=1.0)
+
+        self._cleanup()
+        self.is_playing = False
+
+        if self.current_widget:
+            self.current_widget.change_button_icon('▶')
+
+        self.current_widget = None
+
+
+class SoundWidget(VerticalGroup):
+    def __init__(self, sound: Sound, player: AudioPlayer, **widget_kwargs):
+        self.sound = sound
+        self.player = player
+        super().__init__(**widget_kwargs)
+
+    def compose(self) -> ComposeResult:
+        yield Button('▶', id='toggle-play', variant='success')
+        yield VerticalGroup(
+            Label(self.sound.title, variant='accent'),
+            Label(self.sound.artist or "", markup=False)
+        )
+
+    def on_button_pressed(self, event: Button.Pressed):
+        if event.button.id != 'toggle-play':
+            return
+        
+        # Если эта песня уже играет - останавливаем
+        if self.player.current_widget == self and self.player.is_playing:
+            self.player.stop()
+            self.change_button_icon('▶')
+        else:
+            # Иначе запускаем
+            event.button.label = '..'
+            self.player.play(self.sound.url, self)
+
+    def change_button_icon(self, icon: str): 
+        """Изменение иконки кнопки."""
+        self.query_one('#toggle-play', Button).label = icon
 
 
 class MsocApp(App):
-    def __init__(self, **app_kwargs):
-        self.player = AudioPlayer()
+    CSS = """
+    SoundWidget {
+        height: auto;
+        padding: 1;
+        border: solid green;
+        layout: horizontal;
+    }
+    #toggle-play {
+        width: 5;
+        margin-right: 2;
+    }
+    """
 
-        super().__init__(**app_kwargs)
+    def __init__(self):
+        super().__init__()
+        # Создаем плеер один на все приложение
+        self.player = AudioPlayer(self)
 
     def on_input_submitted(self, event: Input.Submitted):
         if event.control.id != 'search':
             return
-
         self.title = "Идет поиск..."
         event.control.disabled = True
-        asyncio.create_task(self.search_task(event.value))
-
-    def clear_sounds_container(self):
-        self.query('SoundWidget').remove()
+        self.run_worker(self.search_task(event.value), name="search")
 
     async def search_task(self, query: str):
-        self.clear_sounds_container()
-
         list_sounds_container = self.query_one("#list-sounds")
+        list_sounds_container.remove_children()
         
         async for sound in search(query):
-            sound_widget = SoundWidget(self.player, sound)
-            list_sounds_container.mount(sound_widget)
+            # Передаем player в виджет
+            sound_widget = SoundWidget(sound, self.player)
+            await list_sounds_container.mount(sound_widget)
 
         self.title = "Поиск завершен"
-
         self.query_one('#search').disabled = False
 
     def compose(self) -> ComposeResult:
-        yield Header(True)
+        yield Header()
         yield Input(placeholder='Введите поисковой запрос', id='search')
         yield VerticalScroll(id='list-sounds')
         yield Footer()
-    
+
+    def on_unmount(self, event):
+        # Важно: закрываем аудио при выходе из приложения, чтобы не зависло
+        self.player.stop()
+
 
 if __name__ == '__main__':
     logging.basicConfig(
