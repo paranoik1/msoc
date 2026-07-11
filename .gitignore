@@ -12,3 +12,7 @@ test.py
 .venv
 .mypy_cache
 .qwen
+memray*.bin
+memray*.html
+*.ipynb
+*.log

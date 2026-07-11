@@ -87,6 +87,11 @@ async def search(query: str) -> AsyncGenerator[Sound, None]:
                 logger.debug("muzbomb: пропуск элемента без названия")
                 continue
 
+            if not url:
+                logger.debug("muzbomb: пропуск элемента без ссылки на скачивание")
+                continue
+
+
             logger.debug("muzbomb: найден трек '%s' — %s", artist, name)
             yield Sound(name, url, artist)
 

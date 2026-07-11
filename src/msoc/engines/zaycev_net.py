@@ -193,12 +193,11 @@ async def search(query: str) -> AsyncGenerator[Sound, None]:
             elif streaming_hash:
                 url = await get_streaming_url(session, streaming_hash)
 
-            if url:
-                logger.debug("zaycev_net: трек '%s' — %s", artist, name)
-            else:
+            if not url:
                 logger.warning(
                     "zaycev_net: не удалось получить URL для '%s' — %s", artist, name
                 )
+                continue
 
             yield Sound(name, url, artist)
     except ClientError as exc:

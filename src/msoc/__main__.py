@@ -1,7 +1,7 @@
 import asyncio
 from sys import argv
 
-from .msoc import search
+from .core import search
 
 
 async def main(query: str) -> None:

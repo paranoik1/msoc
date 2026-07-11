@@ -91,7 +91,11 @@ async def search(query: str) -> AsyncGenerator[Sound, None]:
         url = get_download_song_url(track_info)
 
         if not name:
-            logger.debug("hitmo: пропуск трека без названия")
+            logger.debug("Пропуск трека без названия")
+            continue
+
+        if not url:
+            logger.warning('Пропуск трека без ссылки на скачивание')
             continue
 
         logger.debug("hitmo: найден трек '%s' — %s", artist or "N/A", name)

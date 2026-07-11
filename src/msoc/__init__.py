@@ -2,7 +2,7 @@ import logging
 from importlib import import_module
 from pathlib import Path
 
-from .msoc import *
+from .core import *
 
 logger = logging.getLogger("msoc.auto_discover_engines")
 
