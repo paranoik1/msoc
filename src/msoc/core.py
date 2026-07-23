@@ -5,6 +5,8 @@ from inspect import isasyncgenfunction
 from types import ModuleType
 from typing import AsyncGenerator, Callable
 
+from aiohttp import ClientError, ClientSession, ClientTimeout
+
 from .exceptions import LoadedEngineNotFoundError
 from .sound import Sound
 
@@ -22,6 +24,8 @@ _ENGINES: dict[str, ModuleType] = {}
 
 logger = logging.getLogger("msoc")
 
+_AVAILABILITY_CACHE: dict[str, bool] = {}
+
 
 def get_engines() -> dict[str, ModuleType]:
     """
@@ -36,6 +40,7 @@ def get_engines() -> dict[str, ModuleType]:
 def clear_engines() -> None:
     """Полностью очищает реестр поисковых движков."""
     _ENGINES.clear()
+    _AVAILABILITY_CACHE.clear()
     logger.info("Реестр движков очищен")
 
 
@@ -97,7 +102,31 @@ def unload_search_engine(name: str) -> None:
         logger.warning("Попытка удалить несуществующий движок: %s", name)
         raise LoadedEngineNotFoundError(name)
 
+    _AVAILABILITY_CACHE.pop(name, None)
     logger.info("Удалён движок: %s", name)
+
+
+async def _check_engine_available(engine_name: str, engine_module: ModuleType) -> bool:
+    url: str | None = getattr(engine_module, "URL", None)
+    if not url:
+        return True
+
+    if engine_name in _AVAILABILITY_CACHE:
+        return _AVAILABILITY_CACHE[engine_name]
+
+    try:
+        async with ClientSession() as session:
+            async with session.get(url, timeout=ClientTimeout(total=5)) as response:
+                available = response.status < 500
+    except (ClientError, asyncio.TimeoutError):
+        available = False
+
+    _AVAILABILITY_CACHE[engine_name] = available
+    if not available:
+        logger.warning(
+            "Движок '%s' недоступен (%s), пропускаем", engine_name, url
+        )
+    return available
 
 
 async def search(query: str) -> AsyncGenerator[Sound, None]:
@@ -138,6 +167,13 @@ async def search(query: str) -> AsyncGenerator[Sound, None]:
         nonlocal finished_count
 
         try:
+            if not await _check_engine_available(engine_name, engines[engine_name]):
+                async with lock:
+                    finished_count += 1
+                    if finished_count == len(tasks):
+                        await queue.put(None)
+                return
+
             async for sound in search_callback(query):
                 sound._engine = engine_name
                 await queue.put(sound)

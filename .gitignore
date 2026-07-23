@@ -16,3 +16,5 @@ memray*.bin
 memray*.html
 *.ipynb
 *.log
+.playwright-mcp
+*.yml

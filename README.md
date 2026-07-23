@@ -7,8 +7,6 @@
 [![PyPI](https://img.shields.io/pypi/v/msoc?style=for-the-badge)](https://pypi.org/project/msoc/)
 [![Downloads](https://img.shields.io/pypi/dm/msoc?style=for-the-badge)](https://pypi.org/project/msoc/)
 
-![MSOC Banner](https://placehold.co/1200x400?text=MSOC+-+Асинхронный+поиск+музыки) <!-- Замените на реальный баннер -->
-
 </div>
 
 ## ✨ Особенности
@@ -17,12 +15,9 @@
 - 🛠️ Простое расширение новыми движками
 - 📦 Легкая интеграция в проекты
 - 🚀 Быстрая установка через pip
+- 🖥️ TUI (Textual User Interface) с поиском, прослушиванием и скачиванием
 
 ---
-
-# 🎵 MSOC - Библиотека для быстрого и асинхронного поиска музыки
-
-MSOC - это библиотека на Python для быстрого и асинхронного поиска музыки в Интернете. Она позволяет искать треки на различных музыкальных сайтах и возвращает информацию о найденных треках, включая их названия и ссылки на скачивание.
 
 # 📦 Установка
 
@@ -42,9 +37,24 @@ pip install .
 
 # 🚀 Использование
 
+## 🖥️ TUI (Textual User Interface)
+
+Запустите TUI для интерактивного поиска, прослушивания и скачивания музыки:
+```shell
+msoc --tui
+# or
+python -m msoc --tui
+```
+
+TUI позволяет:
+- Искать треки по запросу
+- Прослушивать треки через ffmpeg (автоопределение PulseAudio/PipeWire)
+- Скачивать треки в текущую директорию
+- Видеть продолжительность треков
+
 ## 💻 В консоле
 
-Можно протестировать пакет обычным скриптом, который был установлен после установки самой библиотеки:
+Можно протестировать пакет обычным скриптом:
 ```shell
 msoc <query or empty>
 # or
@@ -95,7 +105,7 @@ asyncio.run(main())
 - zaycev_net: Поиск на сайте [zaycev.net](https://zaycev.net)
 - hitmo: Поиск на сайте [rus.hitmotop.com](https://rus.hitmotop.com) - реализован на основе [данного кода](https://github.com/Ushiiro82/MelodyHub/blob/master/parsing/hitmo_parser.py)
 - muzbomb: Поиск на сайте [muzbomb.net](https://muzbomb.net/) - создан [takilow](https://github.com/takilow)
-- trekson: ~~Поиск на сайте [trekson.net](https://trekson.net/)~~ ⚠️ отключён — сайт обновлён, требуется обновление парсера
+- trekson: Поиск на сайте [trekson.net](https://trekson.net/) - обновлённый парсер
 
 Движки загружаются автоматически при импорте пакета `msoc`.
 
@@ -180,6 +190,10 @@ from msoc import unload_search_engine, engines
 unload_search_engine("my_search_engine")
 print(engines())
 ```
+
+### ℹ️ P.S 3 — Проверка доступности сервиса
+Если в модуле движка определена переменная `URL`, перед поиском `msoc` автоматически проверит доступность сервиса.
+Если сервис недоступен, движок будет пропущен без ошибки. Чтобы отключить проверку, просто не указывайте `URL` в модуле.
 
 ## 🤝 Contribution
 

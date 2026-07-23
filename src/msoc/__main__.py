@@ -1,5 +1,5 @@
+import argparse
 import asyncio
-from sys import argv
 
 from .core import search
 
@@ -17,7 +17,26 @@ async def main(query: str) -> None:
 
 
 def execute() -> None:
-    query = argv[1] if len(argv) >= 2 else input("Запрос: ")
+    parser = argparse.ArgumentParser(
+        prog="msoc",
+        description="Быстрый асинхронный поиск музыки",
+    )
+    parser.add_argument("query", nargs="?", help="Поисковый запрос")
+    parser.add_argument(
+        "--tui",
+        action="store_true",
+        help="Запустить графический интерфейс (TUI)",
+    )
+    args = parser.parse_args()
+
+    if args.tui:
+        from .textual_app import MsocApp
+
+        app = MsocApp()
+        app.run()
+        return
+
+    query = args.query if args.query else input("Запрос: ")
     asyncio.run(main(query))
 
 
