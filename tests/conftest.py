@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from src.msoc import clear_engines
+from src.msoc import clear_engines # type: ignore
 
 logging.getLogger("msoc").setLevel(logging.DEBUG)
 

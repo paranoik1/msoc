@@ -1,6 +1,6 @@
 import pytest
 
-from src.msoc import Sound, register_engine, search
+from src.msoc import Sound, register_engine, search # type: ignore
 
 
 async def mock_search(query: str):

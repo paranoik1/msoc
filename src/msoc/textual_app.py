@@ -1,8 +1,7 @@
-from functools import cache
+from functools import cached_property
 import queue
 import subprocess
 import threading
-import sys
 import logging
 
 import sounddevice as sd # type: ignore
@@ -26,8 +25,8 @@ class AudioPlayer:
     Изолированный аудио-движок. Работает в отдельном потоке, 
     чтобы не блокировать asyncio цикл Textual.
     """
-    BUFFER_SIZE = 20
-    BLOCK_SIZE = 1024
+    BUFFER_SIZE = 250
+    BLOCK_SIZE = 512
 
     def __init__(self, app: App):
         self.app = app
@@ -37,27 +36,29 @@ class AudioPlayer:
         self.thread: threading.Thread | None = None
         self.current_widget: SoundWidget | None = None
 
-        self._lock = threading.Lock()
-
         self.manage_task_queue = queue.Queue(maxsize=1) # type: ignore
         self.is_playing = False
         
     def _callback(self, outdata, frames, time, status):
-        if status.output_underflow:
-            raise sd.CallbackAbort
+        if status:
+            logger.warning(f"Audio stream status: {status}")
         
         try:
             data = self.buffer_queue.get_nowait()
         except queue.Empty:
+            outdata[:] = b'\x00' * len(outdata)
             return
         
         if len(data) != len(outdata):
-            raise sd.CallbackAbort
+            # На случай рассинхрона (редко, но бывает при смене трека)
+            logger.error("Audio data size mismatch. Filling with silence.")
+            outdata[:] = b'\x00' * len(outdata)
+            return
             
         outdata[:] = data
 
-    @cache
-    def device(self):
+    @cached_property
+    def output_device(self):
         try:
             sd.query_devices('pipewire')
             return 'pipewire'
@@ -67,7 +68,10 @@ class AudioPlayer:
     @staticmethod
     def _get_ffprobe_info(url: str) -> tuple[Channels, SampleRate, Duration] | None:
         probe_cmd = [
-            'ffprobe', '-v', 'error', '-show_entries', 'stream=channels,sample_rate,duration', '-of', 'default=noprint_wrappers=1:nokey=1', url
+            'ffprobe', 
+            '-v', 'error', 
+            '-show_entries', 'stream=channels,sample_rate,duration', 
+            '-of', 'default=noprint_wrappers=1:nokey=1', url
         ]
 
         try:
@@ -84,7 +88,11 @@ class AudioPlayer:
 
     def _stream_play_ffmpeg(self, url: str, channels: Channels, samplerate: SampleRate):
         ffmpeg_cmd = [
-            'ffmpeg', '-i', url,
+            'ffmpeg', 
+            '-reconnect', '1',
+            '-reconnect_streamed', '1',
+            '-reconnect_delay_max', '2',
+            '-i', url,
             '-f', 'f32le', '-acodec', 'pcm_f32le',
             '-ac', str(channels), '-ar', str(samplerate),
             '-v', 'quiet', 'pipe:'
@@ -102,28 +110,39 @@ class AudioPlayer:
         self.stream = sd.RawOutputStream(
             samplerate=samplerate, blocksize=self.BLOCK_SIZE,
             channels=channels, dtype='float32', callback=self._callback,
-            device=self.device()
+            device=self.output_device
         )
         read_size = self.BLOCK_SIZE * channels * self.stream.samplesize
 
         # Первичная буферизация
         for _ in range(self.BUFFER_SIZE):
             data = process_stdout.read(read_size)
-            if not data: break
+            if not data: 
+                break
             self.buffer_queue.put_nowait(data)
 
         # Основной цикл чтения
         self.is_playing = True
+
+        if self.current_widget:
+            self.app.call_from_thread(
+                self.current_widget.change_button_icon,
+                '⏸'
+            )
+
         with self.stream:
             while self.is_playing:
                 data = process_stdout.read(read_size)
                 if not data:  # Поток закончился
                     break
+
+                while self.is_playing:
                 # Кладем в очередь с таймаутом, чтобы проверять self.is_playing
-                try:
-                    self.buffer_queue.put(data, timeout=0.1)
-                except queue.Full:
-                    pass
+                    try:
+                        self.buffer_queue.put(data, timeout=0.1)
+                        break
+                    except queue.Full:
+                        logger.error("Audio buffer overflow! Dropping data. This should not happen.")
 
     def _worker(self, url: str):
         """Метод, который крутится в фоновом потоке."""
@@ -134,12 +153,6 @@ class AudioPlayer:
                 return
             
             channels, samplerate, duration = probe_info
-
-            if self.current_widget:
-                self.app.call_from_thread(
-                    self.current_widget.change_button_icon,
-                    '⏸'
-                )
 
             self._stream_play_ffmpeg(url, channels, samplerate)
         finally:
@@ -175,11 +188,7 @@ class AudioPlayer:
             self.process.wait()
 
         # Очищаем очередь
-        while not self.buffer_queue.empty():
-            try: 
-                self.buffer_queue.get(timeout=0.01)
-            except: 
-                logger.error('Ошибка очистки буфера', exc_info=True)
+        self.buffer_queue = queue.Queue(maxsize=self.BUFFER_SIZE)
 
         self.stream = None
         self.process = None
@@ -221,11 +230,18 @@ class SoundWidget(VerticalGroup):
             Label(self.sound.title, variant='accent'),
             Label(self.sound.artist or "", markup=False)
         )
+        yield Button('Download', id='download')
 
     def on_button_pressed(self, event: Button.Pressed):
-        if event.button.id != 'toggle-play':
-            return
-        
+        if event.button.id == 'toggle-play':
+            self._action_toggle_play(event)
+        elif event.button.id == 'download':
+            self._action_download(event)
+    
+    def _action_download(self, event: Button.Pressed):
+        pass
+    
+    def _action_toggle_play(self, event: Button.Pressed):
         # Если эта песня уже играет - останавливаем
         if self.player.current_widget == self and self.player.is_playing:
             self.player.stop()

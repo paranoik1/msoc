@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from src.msoc import _auto_discover_engines, get_engines
+from src.msoc import _auto_discover_engines, get_engines # type: ignore
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
