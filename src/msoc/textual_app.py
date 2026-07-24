@@ -1,11 +1,13 @@
 from functools import cached_property
 import os
 import queue
+import re
+import string
 import subprocess
 import tempfile
 import threading
 import logging
-import urllib.request
+import shutil
 
 import sounddevice as sd  # type: ignore[import-untyped]
 from textual.app import App, ComposeResult
@@ -17,14 +19,9 @@ from msoc import Sound, search
 
 logger = logging.getLogger()
 
-
 Channels = int
 SampleRate = float
 Duration = float
-
-
-def _sanitize_filename(name: str) -> str:
-    return "".join(c if c.isalnum() else "_" for c in name)
 
 
 class AudioPlayer:
@@ -47,6 +44,21 @@ class AudioPlayer:
         self._download_paths: dict[str, str] = {}
         # url: is_download_success
         self._download_complete: dict[str, bool] = {}
+        
+        # Блокировка для безопасной проверки статуса загрузки
+        self._download_lock = threading.Lock()
+
+    @staticmethod
+    def _get_sound_filename(sound: Sound) -> str:
+        specific_symbols = string.punctuation.replace(',','')
+
+        def delete_specific_symbols(text: str) -> str:
+            return text.translate(str.maketrans('', '', specific_symbols))
+
+        artist_title = delete_specific_symbols(sound.artist or 'unknown')
+        sound_title = delete_specific_symbols(sound.title)
+        
+        return f"{artist_title} - {sound_title}.mp3"
 
     def _callback(self, outdata, frames, time, status):
         if status:
@@ -106,32 +118,25 @@ class AudioPlayer:
 
         return channels, samplerate, duration
 
-    def _stream_play_ffmpeg(self, url: str, channels: Channels, samplerate: SampleRate):
+    def _stream_play_ffmpeg(self, url: str, channels: Channels, samplerate: SampleRate, temp_path: str):
         ffmpeg_cmd = [
             "ffmpeg",
-            "-reconnect",
-            "1",
-            "-reconnect_streamed",
-            "1",
-            "-reconnect_delay_max",
-            "2",
-            "-i",
-            url,
-            "-f",
-            "f32le",
-            "-acodec",
-            "pcm_f32le",
-            "-ac",
-            str(channels),
-            "-ar",
-            str(samplerate),
-            "-v",
-            "quiet",
-            "pipe:",
+            "-y",  # Перезаписывать temp_path без вопросов
+            "-reconnect", "1",
+            "-reconnect_streamed", "1",
+            "-reconnect_delay_max", "2",
+            "-i", url,
+            # для sounddeivce (numpy тип)
+            "-f", "f32le", "-acodec", "pcm_f32le", "-ac", str(channels), "-ar", str(samplerate), "pipe:1",
+            # для сохранения на диск параллельно
+            "-c:a", "copy", temp_path,
+            # скрываем логи
+            "-v", "error"
         ]
 
         self.process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
         process_stdout = self.process.stdout
+        # For mypy
         if not process_stdout:
             logger.error("ffmpeg process stdout is None...")
             return
@@ -173,21 +178,6 @@ class AudioPlayer:
                             "Audio buffer overflow! Dropping data. This should not happen."
                         )
 
-    def _download_to_temp(self, url: str, sound: Sound):
-        temp_path = os.path.join(
-            self._temp_dir,
-            f"{_sanitize_filename(sound.artist or 'unknown')} - {_sanitize_filename(sound.title)}.mp3",
-        )
-        self._download_paths[url] = temp_path
-        self._download_complete[url] = False
-
-        try:
-            urllib.request.urlretrieve(url, temp_path)
-            self._download_complete[url] = True
-            logger.info("Downloaded to temp: %s", temp_path)
-        except Exception:
-            logger.exception("Failed to download to temp: %s", url)
-
     def _worker(self, url: str):
         try:
             probe_info = self._get_ffprobe_info(url)
@@ -196,25 +186,31 @@ class AudioPlayer:
                 return
 
             channels, samplerate, duration = probe_info
-
-            if self.current_widget:
-                self.app.call_from_thread(
-                    self.current_widget.set_duration, duration
-                )
-
             widget = self.current_widget
             if widget is None:
                 logger.error("No current widget to download for")
                 return
             
-            download_thread = threading.Thread(
-                target=self._download_to_temp,
-                args=(url, widget.sound),
-                daemon=True,
-            )
-            download_thread.start()
+            self.app.call_from_thread(widget.set_duration, duration)
 
-            self._stream_play_ffmpeg(url, channels, samplerate)
+            # Формируем путь для временного файла
+            temp_path = os.path.join(
+                self._temp_dir,
+                self._get_sound_filename(widget.sound)
+            )
+            
+            with self._download_lock:
+                self._download_paths[url] = temp_path
+                self._download_complete[url] = False
+
+            # Запускаем ffmpeg, который будет ИГРАТЬ и СОХРАНЯТЬ одновременно
+            self._stream_play_ffmpeg(url, channels, samplerate, temp_path)
+            
+            # FIXME: даже после join, поток завершается корректно, и поэтому даже если трек не был полностью скачен, ему выдается download_complete = True
+            with self._download_lock:
+                self._download_complete[url] = True
+            logger.info("Фоновая загрузка завершена: %s", temp_path)
+
         finally:
             if not self.manage_task_queue.empty():
                 self.manage_task_queue.get_nowait()
@@ -225,7 +221,6 @@ class AudioPlayer:
                     self.current_widget.change_button_icon, "▶"
                 )
 
-            self.is_playing = False
             self._cleanup()
             self.current_widget = None
 
@@ -260,11 +255,9 @@ class AudioPlayer:
         if self.thread and self.thread.is_alive():
             if self.manage_task_queue.empty():
                 self.manage_task_queue.put("stop_ui")
-            self.thread.join(timeout=1.0)
+            self.thread.join(timeout=1.5)
 
         self._cleanup()
-        self.is_playing = False
-
         if self.current_widget:
             self.current_widget.change_button_icon("▶")
 
@@ -272,36 +265,46 @@ class AudioPlayer:
 
     def download_sound(self, sound: Sound) -> str | None:
         url = sound.url
-        temp_path = self._download_paths.get(url)
-
-        if temp_path and self._download_complete.get(url):
-            dest = os.path.join(
-                os.getcwd(),
-                f"{_sanitize_filename(sound.artist or 'unknown')} - {_sanitize_filename(sound.title)}.mp3",
-            )
-            try:
-                import shutil
-
-                shutil.copy2(temp_path, dest)
-                logger.info("Saved to: %s", dest)
-                return dest
-            except Exception:
-                logger.exception("Failed to save from temp")
-                return self._download_direct(sound)
-
-        return self._download_direct(sound)
-
-    def _download_direct(self, sound: Sound) -> str | None:
         dest = os.path.join(
             os.getcwd(),
-            f"{_sanitize_filename(sound.artist or 'unknown')} - {_sanitize_filename(sound.title)}.mp3",
+            self._get_sound_filename(sound),
         )
+        
+        with self._download_lock:
+            temp_path = self._download_paths.get(url)
+            is_complete = self._download_complete.get(url, False)
+            is_currently_playing = (self.current_widget and self.current_widget.sound.url == url)
+
+        # Если Трек уже полностью загружен фоновым ffmpeg, то просто копируем его в текущую директорию
+        if temp_path and is_complete and os.path.exists(temp_path):
+            try:
+                # copy2 в отличие от copy пытается сохранить метаданные (владельца, группу, дата создания и т д)
+                shutil.copy2(temp_path, dest)
+                logger.info("Скопировано из кэша в: %s", dest)
+                return dest
+            except Exception:
+                logger.exception("Ошибка копирования из кэша")
+
+        # Если трек сейчас играет, то мы не можем копировать незавершенный файл. Запускаем отдельную загрузку с нуля.
+        if is_currently_playing:
+            logger.info("Трек играет, запускаем параллельную быструю загрузку...")
+            return self._download_direct_ffmpeg(sound, dest)
+
+        # Если трек не играет и не загружен, загружаем с нуля.
+        return self._download_direct_ffmpeg(sound, dest)
+
+    def _download_direct_ffmpeg(self, sound: Sound, dest: str) -> str | None:
+        """Быстрая загрузка без декодирования в PCM, только для сохранения файла."""
+        cmd = [
+            "ffmpeg", "-y", "-reconnect", "1", "-reconnect_streamed", "1",
+            "-i", sound.url, "-c:a", "copy", dest, '-v', 'error'
+        ]
         try:
-            urllib.request.urlretrieve(sound.url, dest)
-            logger.info("Downloaded directly to: %s", dest)
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            logger.info("Прямая загрузка завершена: %s", dest)
             return dest
-        except Exception:
-            logger.exception("Failed to download: %s", sound.url)
+        except subprocess.CalledProcessError:
+            logger.exception("Ошибка прямой загрузки через ffmpeg")
             return None
 
 
@@ -330,7 +333,7 @@ class SoundWidget(VerticalGroup):
         elif event.button.id == "download":
             self._action_download(event)
 
-    def set_duration(self, duration_sec: float):
+    def set_duration(self, duration_sec: Duration):
         minutes = int(duration_sec // 60)
         seconds = int(duration_sec % 60)
         self.query_one(DurationLabel).update(f"{minutes:02d}:{seconds:02d}")
@@ -383,7 +386,7 @@ class MsocApp(App):
         padding: 0;
     }
     .play-btn {
-        width: 3;
+        width: 5;
         min-width: 3;
         margin-right: 1;
     }
