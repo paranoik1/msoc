@@ -1,4 +1,5 @@
 import os
+import re
 import queue
 import string
 import subprocess
@@ -10,14 +11,16 @@ import time
 from functools import cached_property, cache
 from enum import Enum
 import sounddevice as sd  # type: ignore[import-untyped]
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, Binding
 from textual.widgets import Header, Footer, Input, Button, Label
+from textual.reactive import reactive
 from textual.containers import VerticalScroll, VerticalGroup, HorizontalGroup
 
-from msoc import Sound, search
+from msoc import Sound, search, SearchMode
 
 
 logger = logging.getLogger()
+
 
 Channels = int
 SampleRate = float
@@ -130,9 +133,6 @@ class AudioPlayer:
         ffmpeg_cmd = [
             "ffmpeg",
             "-y",  # Перезаписывать sound_filepath без вопросов
-            # "-reconnect", "1",
-            # "-reconnect_streamed", "1",
-            # "-reconnect_delay_max", "2",
             "-i", sound_filepath,
             # для sounddeivce (numpy тип)
             "-f", "f32le", "-acodec", "pcm_f32le", "-ac", str(channels), "-ar", str(samplerate), "pipe:1",
@@ -469,14 +469,32 @@ class MsocApp(App):
     }
     """
 
-    def __init__(self):
+    suffix_title_pattern = re.compile(r' \([a-zA-Z]* mode\)$')
+
+    BINDINGS = [
+        Binding('m', 'toggle_search_mode', "Change Search Mode")
+    ]
+
+    def __init__(self, search_mode: SearchMode = SearchMode.Fast):
         super().__init__()
         self.player = AudioPlayer(self)
+        self.search_mode = search_mode
+        self.update_title()
+
+    def update_title(self, title: str | None = None):
+        if not title:
+            title = self.suffix_title_pattern.sub('', self.title)
+
+        self.title = title + f' ({self.search_mode.value.title()} mode)'
+
+    def action_toggle_search_mode(self):
+        self.search_mode = SearchMode.Fast if self.search_mode == SearchMode.Full else SearchMode.Full
+        self.update_title()
 
     def on_input_submitted(self, event: Input.Submitted):
         if event.control.id != "search":
             return
-        self.title = "Идет поиск..."
+        self.update_title("Идет поиск...")
         event.control.disabled = True
         self.run_worker(self.search_task(event.value), name="search")
 
@@ -484,11 +502,11 @@ class MsocApp(App):
         list_sounds_container = self.query_one("#list-sounds")
         list_sounds_container.remove_children()
 
-        async for sound in search(query):
+        async for sound in search(query, mode=self.search_mode):
             sound_widget = SoundWidget(sound, self.player)
             await list_sounds_container.mount(sound_widget)
 
-        self.title = "Поиск завершен"
+        self.update_title("Поиск завершен")
         self.query_one("#search").disabled = False
 
     def compose(self) -> ComposeResult:

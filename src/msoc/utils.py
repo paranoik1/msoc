@@ -3,6 +3,8 @@ import re
 
 logger = logging.getLogger("msoc")
 
+http_pattern = re.compile(r'^https?://')
+
 
 def validate_and_return_absolute_url(sound_url: str, base_url: str) -> str:
     """
@@ -10,7 +12,7 @@ def validate_and_return_absolute_url(sound_url: str, base_url: str) -> str:
 
     Args:
         sound_url: Относительный или абсолютный URL трека.
-        
+
         base_url: Базовый URL сайта для преобразования относительных ссылок.
 
     Returns:
@@ -20,11 +22,10 @@ def validate_and_return_absolute_url(sound_url: str, base_url: str) -> str:
         ValueError: Если base_url не является корректным абсолютным URL.
     """
 
-    pattern = re.compile(r'^https?://')
-    if pattern.search(sound_url):
+    if http_pattern.search(sound_url):
         return sound_url
     
-    if not pattern.search(base_url):
+    if not http_pattern.search(base_url):
         raise ValueError('Базовый url должен быть абсолютным')
     
     url_fragments = base_url.split('/') 

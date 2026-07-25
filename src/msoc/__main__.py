@@ -1,10 +1,10 @@
 import argparse
 import asyncio
 
-from .core import Mode, search
+from .core import SearchMode, search
 
 
-async def main(query: str, mode: Mode) -> None:
+async def main(query: str, mode: SearchMode) -> None:
     async for sound in search(query, mode=mode):
         print(
             f"Name: {sound.title}\n"
@@ -34,15 +34,15 @@ def execute() -> None:
         help="Режим поиска: fast (только первые страницы) или full (все страницы)",
     )
     args = parser.parse_args()
+    mode = SearchMode(args.mode)
 
     if args.tui:
         from .textual_app import MsocApp
 
-        app = MsocApp()
+        app = MsocApp(search_mode=mode)
         app.run()
         return
 
-    mode = Mode(args.mode)
     query = args.query if args.query else input("Запрос: ")
     asyncio.run(main(query, mode))
 

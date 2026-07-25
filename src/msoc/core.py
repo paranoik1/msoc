@@ -10,7 +10,7 @@ from .exceptions import LoadedEngineNotFoundError
 from .sound import Sound
 
 __all__ = [
-    "Mode",
+    "SearchMode",
     "search",
     "get_engines",
     "register_engine",
@@ -20,7 +20,7 @@ __all__ = [
 ]
 
 
-class Mode(Enum):
+class SearchMode(Enum):
     Fast = "fast"
     Full = "full"
 
@@ -86,7 +86,7 @@ def unload_search_engine(name: str) -> None:
     logger.info("Удалён движок: %s", name)
 
 
-async def search(query: str, mode: Mode = Mode.Fast) -> AsyncGenerator[Sound, None]:
+async def search(query: str, mode: SearchMode = SearchMode.Fast) -> AsyncGenerator[Sound, None]:
     """
     Запускает параллельный поиск музыки по всем зарегистрированным движкам.
 
@@ -95,17 +95,19 @@ async def search(query: str, mode: Mode = Mode.Fast) -> AsyncGenerator[Sound, No
 
     Args:
         query: Поисковый запрос (название трека, исполнитель или и то и другое).
-        mode: Режим поиска — ``Fast`` (только первые страницы) или ``Full``
-            (все страницы через ``search_full``, если он реализован).
+
+        mode: Режим поиска — Fast (только первые страницы) или Full
+            (все страницы через search_full, если он реализован).
 
     Yields:
         Sound — унифицированная информация о найденном треке.
-        Поле ``_engine`` автоматически заполняется именем движка-источника.
+
+        Поле _engine автоматически заполняется именем движка-источника.
 
     Note:
         Если ни один движок не зарегистрирован, генератор немедленно завершится.
-        Ошибки отдельных движков логируются на уровне CRITICAL и не прерывают
-        поиск остальными движками.
+        
+        Ошибки отдельных движков логируются и не прерывают поиск остальными движками.
     """
     engines = get_engines()
     queue: asyncio.Queue[Sound | None] = asyncio.Queue()
@@ -156,7 +158,7 @@ async def search(query: str, mode: Mode = Mode.Fast) -> AsyncGenerator[Sound, No
             )
             continue
 
-        if mode is Mode.Full:
+        if mode is SearchMode.Full:
             search_full = getattr(engine_module, "search_full", None)
             if search_full is not None:
                 callback = search_full
