@@ -6,8 +6,6 @@ from inspect import isasyncgenfunction
 from types import ModuleType
 from typing import AsyncGenerator, Callable
 
-from aiohttp import ClientError, ClientSession, ClientTimeout
-
 from .exceptions import LoadedEngineNotFoundError
 from .sound import Sound
 
@@ -88,34 +86,6 @@ def unload_search_engine(name: str) -> None:
     logger.info("Удалён движок: %s", name)
 
 
-_AVAILABILITY_CACHE: dict[str, bool] = {}
-
-async def _check_engine_available(engine_name: str) -> bool:
-    if engine_name in _AVAILABILITY_CACHE:
-        return _AVAILABILITY_CACHE[engine_name]
-    
-    module = _ENGINES.get(engine_name)
-    if module is None:
-        return False
-
-    url: str | None = getattr(module, "URL", None)
-    if not url:
-        return True
-
-    try:
-        async with ClientSession() as session:
-            async with session.get(url, timeout=ClientTimeout(total=5)) as response:
-                avaiable = response.ok
-    except (ClientError, asyncio.TimeoutError):
-        logger.warning(
-            "Движок '%s' недоступен (%s), пропускаем", engine_name, url
-        )
-        avaiable = False
-
-    _AVAILABILITY_CACHE[engine_name] = avaiable
-    return avaiable
-
-
 async def search(query: str, mode: Mode = Mode.Fast) -> AsyncGenerator[Sound, None]:
     """
     Запускает параллельный поиск музыки по всем зарегистрированным движкам.
@@ -159,13 +129,6 @@ async def search(query: str, mode: Mode = Mode.Fast) -> AsyncGenerator[Sound, No
         nonlocal finished_count
 
         try:
-            if not await _check_engine_available(engine_name):
-                async with lock:
-                    finished_count += 1
-                    if finished_count == len(tasks):
-                        await queue.put(None)
-                return
-
             async for sound in callback(query):
                 sound._engine = engine_name
                 await queue.put(sound)

@@ -68,7 +68,7 @@ async def _create_soup_obj(url: str) -> BeautifulSoup:
 
 def parse_tracks(soup: BeautifulSoup) -> Generator[Sound, None]:
     all_songs = soup.select(".tracks__item")
-    logger.info("hitmo: найдено треков: %d", len(all_songs))
+    logger.info("найдено треков: %d", len(all_songs))
 
     for track_info in all_songs:
         name = get_song_name(track_info)
@@ -83,7 +83,7 @@ def parse_tracks(soup: BeautifulSoup) -> Generator[Sound, None]:
             logger.warning('Пропуск трека без ссылки на скачивание')
             continue
 
-        logger.debug("hitmo: найден трек '%s' — %s", artist or "N/A", name)
+        logger.debug("найден трек '%s' — %s", artist or "N/A", name)
         yield Sound(title=name, artist=artist, url=url)
 
 
@@ -100,12 +100,12 @@ async def search(query: str) -> AsyncGenerator[Sound, None]:
     encoded_query = quote(query)
     search_url = f"{URL}search?q={encoded_query}"
 
-    logger.info("hitmo: поиск по запросу '%s'", query)
+    logger.info("поиск по запросу '%s'", query)
 
     try:
         soup = await _create_soup_obj(search_url)
     except ClientError as exc:
-        logger.error("hitmo: ошибка HTTP-запроса: %s", exc)
+        logger.error("ошибка HTTP-запроса: %s", exc)
         return
 
     for sound in parse_tracks(soup):
@@ -116,13 +116,13 @@ async def search_full(query: str) -> AsyncGenerator[Sound, None]:
     encoded_query = quote(query)
     current_url = f"{URL}search?q={encoded_query}"
 
-    logger.info("hitmo: поиск по запросу '%s'", query)
+    logger.info("поиск по запросу '%s'", query)
 
     while True:
         try:
             soup = await _create_soup_obj(current_url)
         except ClientError as exc:
-            logger.error("hitmo: ошибка HTTP-запроса: %s", exc)
+            logger.error("ошибка HTTP-запроса: %s", exc)
             return
 
         for sound in parse_tracks(soup):
