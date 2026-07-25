@@ -145,7 +145,6 @@ asyncio.run(main())
 - zaycev_net: Поиск на сайте [zaycev.net](https://zaycev.net)
 - hitmo: Поиск на сайте [rus.hitmotop.com](https://rus.hitmotop.com) - реализован на основе [данного кода от Ushiiro82](https://github.com/Ushiiro82/MelodyHub/blob/master/parsing/hitmo_parser.py)
 - muzbomb: Поиск на сайте [muzbomb.net](https://muzbomb.net/) - создан [takilow](https://github.com/takilow)
-- trekson: Поиск на сайте [trekson.net](https://trekson.net/) - обновлённый парсер
 
 Движки загружаются автоматически при импорте пакета `msoc`.
 
