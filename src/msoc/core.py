@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import warnings
+from enum import Enum
 from inspect import isasyncgenfunction
 from types import ModuleType
 from typing import AsyncGenerator, Callable
@@ -11,21 +12,23 @@ from .exceptions import LoadedEngineNotFoundError
 from .sound import Sound
 
 __all__ = [
+    "Mode",
     "search",
     "get_engines",
     "register_engine",
-    "load_search_engine",
     "unload_search_engine",
     "Sound",
     "clear_engines",
 ]
 
+
+class Mode(Enum):
+    Fast = "fast"
+    Full = "full"
+
 _ENGINES: dict[str, ModuleType] = {}
 
 logger = logging.getLogger("msoc")
-
-_AVAILABILITY_CACHE: dict[str, bool] = {}
-
 
 def get_engines() -> dict[str, ModuleType]:
     """
@@ -40,27 +43,7 @@ def get_engines() -> dict[str, ModuleType]:
 def clear_engines() -> None:
     """Полностью очищает реестр поисковых движков."""
     _ENGINES.clear()
-    _AVAILABILITY_CACHE.clear()
     logger.info("Реестр движков очищен")
-
-
-def load_search_engine(name: str, module: ModuleType) -> None:
-    """
-    ⚠️ УСТАРЕЛО: Используйте :func:`register_engine` вместо этой функции.
-
-    Эта функция будет удалена в будущем выпуске.
-    """
-    warnings.warn(
-        "load_search_engine() устарела и будет удалена в будущем. "
-        "Используйте register_engine() вместо неё.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    logger.warning(
-        "Вызов устаревшей функции load_search_engine(). "
-        "Пожалуйста, обновите код на register_engine()."
-    )
-    register_engine(name, module)
 
 
 def register_engine(name: str, module: ModuleType) -> None:
@@ -102,34 +85,38 @@ def unload_search_engine(name: str) -> None:
         logger.warning("Попытка удалить несуществующий движок: %s", name)
         raise LoadedEngineNotFoundError(name)
 
-    _AVAILABILITY_CACHE.pop(name, None)
     logger.info("Удалён движок: %s", name)
 
 
-async def _check_engine_available(engine_name: str, engine_module: ModuleType) -> bool:
-    url: str | None = getattr(engine_module, "URL", None)
-    if not url:
-        return True
+_AVAILABILITY_CACHE: dict[str, bool] = {}
 
+async def _check_engine_available(engine_name: str) -> bool:
     if engine_name in _AVAILABILITY_CACHE:
         return _AVAILABILITY_CACHE[engine_name]
+    
+    module = _ENGINES.get(engine_name)
+    if module is None:
+        return False
+
+    url: str | None = getattr(module, "URL", None)
+    if not url:
+        return True
 
     try:
         async with ClientSession() as session:
             async with session.get(url, timeout=ClientTimeout(total=5)) as response:
-                available = response.status < 500
+                avaiable = response.ok
     except (ClientError, asyncio.TimeoutError):
-        available = False
-
-    _AVAILABILITY_CACHE[engine_name] = available
-    if not available:
         logger.warning(
             "Движок '%s' недоступен (%s), пропускаем", engine_name, url
         )
-    return available
+        avaiable = False
+
+    _AVAILABILITY_CACHE[engine_name] = avaiable
+    return avaiable
 
 
-async def search(query: str) -> AsyncGenerator[Sound, None]:
+async def search(query: str, mode: Mode = Mode.Fast) -> AsyncGenerator[Sound, None]:
     """
     Запускает параллельный поиск музыки по всем зарегистрированным движкам.
 
@@ -138,6 +125,8 @@ async def search(query: str) -> AsyncGenerator[Sound, None]:
 
     Args:
         query: Поисковый запрос (название трека, исполнитель или и то и другое).
+        mode: Режим поиска — ``Fast`` (только первые страницы) или ``Full``
+            (все страницы через ``search_full``, если он реализован).
 
     Yields:
         Sound — унифицированная информация о найденном треке.
@@ -156,25 +145,28 @@ async def search(query: str) -> AsyncGenerator[Sound, None]:
         logger.warning("search() вызван без зарегистрированных движков")
         return
 
-    logger.info("Начало поиска по %d движкам, запрос: '%s'", len(engines), query)
+    logger.info(
+        "Начало поиска по %d движкам, режим: %s, запрос: '%s'",
+        len(engines), mode.value, query,
+    )
 
     finished_count = 0
     tasks: list[asyncio.Task[None]] = []
 
     async def _engine_search(
-        engine_name: str, search_callback: Callable[[str], AsyncGenerator[Sound, None]]
+        engine_name: str, callback: Callable[[str], AsyncGenerator[Sound, None]]
     ) -> None:
         nonlocal finished_count
 
         try:
-            if not await _check_engine_available(engine_name, engines[engine_name]):
+            if not await _check_engine_available(engine_name):
                 async with lock:
                     finished_count += 1
                     if finished_count == len(tasks):
                         await queue.put(None)
                 return
 
-            async for sound in search_callback(query):
+            async for sound in callback(query):
                 sound._engine = engine_name
                 await queue.put(sound)
         except Exception:
@@ -194,14 +186,23 @@ async def search(query: str) -> AsyncGenerator[Sound, None]:
 
     for engine_name, engine_module in engines.items():
         try:
-            search_callback = getattr(engine_module, "search")
+            callback = getattr(engine_module, "search")
         except AttributeError:
-            logger.error(
+            logger.critical(
                 "'%s' движок не содержит функцию search(), пропускаем...", engine_name
             )
             continue
 
-        task = asyncio.create_task(_engine_search(engine_name, search_callback))
+        if mode is Mode.Full:
+            search_full = getattr(engine_module, "search_full", None)
+            if search_full is not None:
+                callback = search_full
+            else:
+                logger.warning(
+                    "'%s' не реализует search_full, используем search", engine_name
+                )
+
+        task = asyncio.create_task(_engine_search(engine_name, callback))
         tasks.append(task)
 
     logger.debug("Запущено %d задач поиска", len(tasks))

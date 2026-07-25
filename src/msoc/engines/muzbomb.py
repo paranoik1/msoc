@@ -7,7 +7,11 @@ import aiohttp
 from aiohttp import ClientError
 from bs4 import BeautifulSoup, Tag
 
-from ..sound import Sound
+try:
+    from ..sound import Sound
+except ImportError:
+    from msoc.sound import Sound
+
 
 logger = logging.getLogger("msoc.muzbomb")
 
@@ -98,3 +102,13 @@ async def search(query: str) -> AsyncGenerator[Sound, None]:
         except Exception:
             logger.exception("muzbomb: ошибка при обработке элемента результата")
             continue
+
+
+if __name__ == '__main__':
+    import asyncio
+
+    async def main():
+        async for sound in search("mzlf"):
+            print(sound.title, sound.url)
+
+    asyncio.run(main())

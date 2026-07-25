@@ -1,11 +1,11 @@
 import argparse
 import asyncio
 
-from .core import search
+from .core import Mode, search
 
 
-async def main(query: str) -> None:
-    async for sound in search(query):
+async def main(query: str, mode: Mode) -> None:
+    async for sound in search(query, mode=mode):
         print(
             f"Name: {sound.title}\n"
             f"Artist: {sound.artist}\n"
@@ -27,6 +27,12 @@ def execute() -> None:
         action="store_true",
         help="Запустить графический интерфейс (TUI)",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["fast", "full"],
+        default="fast",
+        help="Режим поиска: fast (только первые страницы) или full (все страницы)",
+    )
     args = parser.parse_args()
 
     if args.tui:
@@ -36,8 +42,9 @@ def execute() -> None:
         app.run()
         return
 
+    mode = Mode(args.mode)
     query = args.query if args.query else input("Запрос: ")
-    asyncio.run(main(query))
+    asyncio.run(main(query, mode))
 
 
 if __name__ == "__main__":

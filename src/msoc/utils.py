@@ -1,6 +1,5 @@
 import logging
-
-from yarl import URL
+import re
 
 logger = logging.getLogger("msoc")
 
@@ -11,6 +10,7 @@ def validate_and_return_absolute_url(sound_url: str, base_url: str) -> str:
 
     Args:
         sound_url: Относительный или абсолютный URL трека.
+        
         base_url: Базовый URL сайта для преобразования относительных ссылок.
 
     Returns:
@@ -19,16 +19,21 @@ def validate_and_return_absolute_url(sound_url: str, base_url: str) -> str:
     Raises:
         ValueError: Если base_url не является корректным абсолютным URL.
     """
-    if sound_url.startswith("https://"):
+
+    pattern = re.compile(r'^https?://')
+    if pattern.search(sound_url):
         return sound_url
+    
+    if not pattern.search(base_url):
+        raise ValueError('Базовый url должен быть абсолютным')
+    
+    url_fragments = base_url.split('/') 
+    host_url = "/".join(url_fragments[:3])
 
-    yarl_url = URL(base_url)
-    try:
-        host_site = yarl_url.origin()
-    except ValueError:
-        logger.error("Некорректный base_url: %s", base_url)
-        raise ValueError(f"Поисковой запрос должен быть абсолютным: {base_url}")
+    if not sound_url.startswith('/'):
+        sound_url = '/' + sound_url
 
-    absolute_url = host_site.with_path(sound_url)
+    absolute_url = host_url + sound_url
+    
     logger.debug("Преобразован URL '%s' -> '%s'", sound_url, absolute_url)
-    return str(absolute_url)
+    return absolute_url
