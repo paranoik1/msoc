@@ -373,6 +373,7 @@ class SoundWidget(VerticalGroup):
             with VerticalGroup(classes="sound-info"):
                 yield Label(self.sound.title, classes="song-title")
                 yield Label(self.sound.artist or "", classes="song-artist")
+                yield Label(self.sound._engine or 'none', classes='song-engine')
             yield DurationLabel("", classes="duration-label")
             yield Button("Download", id="download", classes="download-btn")
 
@@ -450,6 +451,12 @@ class MsocApp(App):
         opacity: 0.7;
         padding: 0;
         min-height: 1;
+    }
+    .song-engine {
+        opacity: 0.8;
+        padding: 0;
+        min-height: 1;
+        text-style: italic;
     }
     .duration-label {
         width: 6;
